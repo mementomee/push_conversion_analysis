@@ -4,6 +4,7 @@
 *.parquet
 *.pkl
 *.pickle
+*.pdf
 
 # CSV files (including compressed)
 *.csv.gz
