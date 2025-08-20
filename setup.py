@@ -18,7 +18,8 @@ setup(
         "ipykernel>=6.25.0",
         "python-dotenv>=1.0.0",
         "openpyxl>=3.1.0",
-        "scikit-learn>=1.3.0"
+        "scikit-learn>=1.3.0",
+        "statsmodels>=0.14.0"
     ],
     python_requires=">=3.8",
     classifiers=[

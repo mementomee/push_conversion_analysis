@@ -59,6 +59,49 @@ class DataLoader:
         logger.info(f"✅ Завантажено {len(df)} push-записів для {df['gadid'].nunique()} користувачів")
         return df
     
+    def load_complete_dataset(self,
+                             start_date: str = PUSH_START_DATE,
+                             end_date: str = PUSH_END_DATE,
+                             include_control_group: bool = True) -> pd.DataFrame:
+        """
+        Завантажити повний набір даних включаючи контрольну групу
+        
+        Args:
+            start_date: Початкова дата
+            end_date: Кінцева дата
+            include_control_group: Включити групу 6 (контрольну)
+            
+        Returns:
+            DataFrame з усіма групами включаючи контрольну
+        """
+        logger.info("📊 Завантаження повного набору даних з контрольною групою...")
+        
+        # Завантажуємо push-дані (групи 1-5)
+        push_df = self.load_push_data(start_date, end_date)
+        
+        if include_control_group:
+            # Завантажуємо контрольну групу (група 6)
+            control_df = self.db.get_control_group_data(start_date, end_date)
+            
+            if not control_df.empty:
+                # Обробляємо контрольну групу
+                control_df = self._process_control_group_data(control_df)
+                
+                # Приводимо колонки до консистентного формату
+                control_df = self._align_dataframes(push_df, control_df)
+                
+                # Об'єднуємо з push-даними
+                complete_df = pd.concat([push_df, control_df], ignore_index=True)
+                logger.info(f"✅ Додано {len(control_df)} користувачів з контрольної групи 6")
+            else:
+                logger.warning("⚠️ Контрольна група не знайдена")
+                complete_df = push_df
+        else:
+            complete_df = push_df
+        
+        logger.info(f"📋 Загалом {len(complete_df)} записів для {complete_df['gadid'].nunique()} користувачів")
+        return complete_df
+    
     def load_conversion_data(self, 
                            start_date: str = CONVERSION_START_DATE,
                            end_date: str = CONVERSION_END_DATE,
@@ -262,6 +305,81 @@ class DataLoader:
         df = df[df['gadid'].notna() & (df['gadid'] != '')]
         
         return df
+    
+    def _process_control_group_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Додаткова обробка контрольної групи (група 6)
+        
+        Args:
+            df: Сирі дані контрольної групи
+            
+        Returns:
+            Оброблені дані
+        """
+        if df.empty:
+            return df
+            
+        # Заповнюємо порожні значення для консистентності з push-даними
+        df['campaign_duration_hours'] = 0
+        df['push_category'] = '0'  # Нуль push-ів
+        df['push_days'] = 0
+        
+        # Конвертуємо дати (навіть якщо NULL)
+        df['first_push'] = pd.NaT
+        df['last_push'] = pd.NaT
+        
+        # Додаємо tier країни якщо є country
+        if 'country' in df.columns:
+            df['tier'] = df['country'].apply(get_country_tier)
+        
+        # Валідація даних
+        df = df[df['gadid'].notna() & (df['gadid'] != '')]
+        df = df[df['ab_group'].notna()]
+        
+        return df
+    
+    def _align_dataframes(self, push_df: pd.DataFrame, control_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Приводить структуру control_df до відповідності з push_df
+        
+        Args:
+            push_df: DataFrame з push-даними
+            control_df: DataFrame з контрольною групою
+            
+        Returns:
+            Узгоджений control_df
+        """
+        if push_df.empty or control_df.empty:
+            return control_df
+        
+        # Отримуємо всі колонки з push_df
+        push_columns = set(push_df.columns)
+        control_columns = set(control_df.columns)
+        
+        # Додаємо відсутні колонки в control_df
+        missing_columns = push_columns - control_columns
+        for col in missing_columns:
+            if col in ['first_push', 'last_push']:
+                control_df[col] = pd.NaT
+            elif col in ['push_count', 'push_days', 'campaign_duration_hours']:
+                control_df[col] = 0
+            elif col in ['avg_success_rate']:
+                control_df[col] = None
+            elif col == 'push_category':
+                control_df[col] = '0'
+            elif col == 'tier':
+                if 'country' in control_df.columns:
+                    control_df[col] = control_df['country'].apply(get_country_tier)
+                else:
+                    control_df[col] = 'Unknown'
+            else:
+                # Для інших колонок ставимо None/NaN
+                control_df[col] = None
+        
+        # Впорядковуємо колонки як у push_df
+        control_df = control_df.reindex(columns=push_df.columns, fill_value=None)
+        
+        return control_df
     
     def save_processed_data(self, 
                           push_df: pd.DataFrame, 

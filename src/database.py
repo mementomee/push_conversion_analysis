@@ -175,6 +175,43 @@ class PushDatabase:
         
         return self.execute_query('statistic', query, params)
     
+    def get_control_group_data(self,
+                              start_date: str = PUSH_START_DATE,
+                              end_date: str = PUSH_END_DATE) -> pd.DataFrame:
+        """
+        Отримує дані контрольної групи (група 6 - без push-сповіщень)
+        
+        Args:
+            start_date: Початкова дата
+            end_date: Кінцева дата
+            
+        Returns:
+            DataFrame з користувачами групи 6
+        """
+        query = f"""
+        SELECT 
+            toString(gadid) as gadid,
+            tag as ab_group,
+            country_name as country,
+            0 as push_count,
+            NULL as first_push,
+            NULL as last_push,
+            0 as push_days,
+            NULL as avg_success_rate
+        FROM device
+        WHERE tag = '6'
+          AND type = {ANDROID_TYPE}
+          AND gadid IS NOT NULL
+        GROUP BY gadid, tag, country_name
+        """
+        
+        params = {
+            'start_date': start_date,
+            'end_date': end_date
+        }
+        
+        return self.execute_query('statistic', query, params)
+    
     def get_conversion_data(self,
                            start_date: str = CONVERSION_START_DATE,
                            end_date: str = CONVERSION_END_DATE,
@@ -265,7 +302,7 @@ class PushDatabase:
             state,
             created_at,
             updated_at
-        FROM keitaro_campaigns
+        FROM keitaro_groups
         WHERE ({' OR '.join(search_conditions)})
         ORDER BY name
         """
